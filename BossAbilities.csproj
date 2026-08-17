@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+    <AssemblyName>BossAbilities</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 
+      IMPORTANT: Change these paths to point to the real DLLs from your TShock installation.
+      Example locations:
+        - ServerPlugins/TShockAPI.dll
+        - OTAPI.dll (in TShock root)
+        - TerrariaServer.dll (in TShock root)
+    -->
+    <Reference Include="TShockAPI">
+      <HintPath>..\TShock\ServerPlugins\TShockAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="OTAPI">
+      <HintPath>..\TShock\OTAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="TerrariaServer">
+      <HintPath>..\TShock\TerrariaServer.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>
