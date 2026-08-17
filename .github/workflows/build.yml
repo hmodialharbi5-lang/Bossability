@@ -1,0 +1,118 @@
+name: Build BossAbilities
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Download TShock
+        run: |
+          set -e
+          echo "Downloading latest TShock..."
+
+          LATEST_URL=$(curl -s https://api.github.com/repos/Pryaxis/TShock/releases/latest \
+            | grep -o 'https://[^"]*linux-x64-Release\.zip' | head -1)
+
+          if [ -z "$LATEST_URL" ]; then
+            LATEST_URL=$(curl -s https://api.github.com/repos/Pryaxis/TShock/releases/latest \
+              | grep -o 'https://[^"]*linux[^"]*\.zip' | head -1)
+          fi
+
+          echo "URL: $LATEST_URL"
+          curl -L --fail -o tshock.zip "$LATEST_URL"
+
+          mkdir -p tshock_temp
+          unzip -q tshock.zip -d tshock_temp
+
+          # Handle .tar inside zip (current TShock packaging)
+          if ls tshock_temp/*.tar 1> /dev/null 2>&1; then
+            echo "Extracting inner tar..."
+            tar -xf tshock_temp/*.tar -C tshock_temp
+          fi
+
+          TSHOCK_DIR=$(find tshock_temp -type d -name "ServerPlugins" | head -1 | xargs dirname)
+
+          if [ -z "$TSHOCK_DIR" ]; then
+            echo "ERROR: ServerPlugins not found"
+            find tshock_temp -maxdepth 4 -type d
+            exit 1
+          fi
+
+          echo "TShock found at: $TSHOCK_DIR"
+          mkdir -p TShock
+          cp -r "$TSHOCK_DIR"/* TShock/
+
+          echo "=== Contents ==="
+          ls -la TShock/
+          ls -la TShock/ServerPlugins/ || true
+
+      - name: Fix project references
+        run: |
+          # Update HintPaths
+          sed -i 's|HintPath>.*TShockAPI.dll|HintPath>./TShock/ServerPlugins/TShockAPI.dll|' BossAbilities.csproj
+          sed -i 's|HintPath>.*OTAPI.dll|HintPath>./TShock/OTAPI.dll|' BossAbilities.csproj
+          sed -i 's|HintPath>.*TerrariaServer.dll|HintPath>./TShock/TerrariaServer.dll|' BossAbilities.csproj
+
+          # Fallback search if files are in different locations
+          if [ ! -f "./TShock/OTAPI.dll" ]; then
+            OTAPI=$(find TShock -name "OTAPI.dll" | head -1)
+            if [ -n "$OTAPI" ]; then
+              sed -i "s|HintPath>.*OTAPI.dll|HintPath>$OTAPI|" BossAbilities.csproj
+            fi
+          fi
+
+          if [ ! -f "./TShock/TerrariaServer.dll" ]; then
+            TS=$(find TShock -name "TerrariaServer.dll" | head -1)
+            if [ -n "$TS" ]; then
+              sed -i "s|HintPath>.*TerrariaServer.dll|HintPath>$TS|" BossAbilities.csproj
+            fi
+          fi
+
+          echo "=== csproj ==="
+          cat BossAbilities.csproj
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release --no-restore
+
+      - name: Check output
+        run: |
+          echo "Looking for DLL..."
+          find . -name "BossAbilities.dll" -type f
+          ls -la bin/Release/net9.0/ || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BossAbilities
+          path: |
+            bin/Release/net9.0/BossAbilities.dll
+            README.md
+          if-no-files-found: error
+
+      - name: Attach to Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bin/Release/net9.0/BossAbilities.dll
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
